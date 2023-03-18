@@ -1,0 +1,13 @@
+# picklist options
+
+select * {
+	?option a def:PickListOption ;
+		:pickList ?picklist ;
+		:id ?optionId ;
+		:name ?optionName ;
+		:description ?optionDescription ;
+		:value ?optionValue ;
+		.
+
+	# @MARK:VALUES
+}

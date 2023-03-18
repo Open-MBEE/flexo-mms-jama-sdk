@@ -1,0 +1,33 @@
+# item properties
+
+select * {
+	hint:Query  hint:joinOrder  "Ordered" .
+
+	?item a def:Item ;
+		# occasionally an item will belong to another project; do not exclude it from the mapping in case it is referenced
+		# :project $_PROJECT_NODE ;
+		:itemType ?itemType ;
+		:documentKey ?itemKey ;
+		:fields [
+			:name ?itemName ;
+		] ;
+		.
+	
+	?itemType :display ?itemTypeDisplay .
+
+	# attribution
+	?item
+		:createdBy ?createdBy ;
+		:modifiedBy ?modifiedBy ;
+		:createdDate ?createdDate ;
+		:modifiedDate ?modifiedDate ;
+		:lastActivityDate ?lastActivityDate ;
+		.
+	
+	# location
+	optional {
+		?item :location/:parent/(:item|:project) ?parent .
+	}
+
+	# @MARK:VALUES
+}

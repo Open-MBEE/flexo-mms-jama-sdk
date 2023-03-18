@@ -1,0 +1,11 @@
+# item relationships
+
+select * {
+	?relation a def:Relationship ;
+		:relationshipType/:name ?relationName ;
+		:fromItem ?src ;
+		:toItem ?dst ;
+		.
+
+	# @MARK:VALUES
+}

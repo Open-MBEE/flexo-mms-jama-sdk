@@ -1,0 +1,15 @@
+# users
+
+select * {
+	?user a def:User ;
+		:username ?username ;
+		:firstName ?firstName ;
+		:lastName ?lastName ;
+		.
+	
+	optional {
+		?user :email ?email .
+	}
+
+	# @MARK:VALUES
+}

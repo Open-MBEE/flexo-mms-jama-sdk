@@ -1,0 +1,18 @@
+# item type fields
+
+select * {
+	?itemType a def:ItemType ;
+		:fields/rdf:rest*/rdf:first ?field ;
+		.
+	
+	?field :name ?fieldName ;
+		:fieldType ?fieldType ;
+		:label ?fieldLabel ;
+		.
+
+	optional {
+		?field :pickList ?picklistId .
+	}
+
+	# @MARK:VALUES
+}

@@ -1,0 +1,11 @@
+# picklists
+
+select * {
+	?picklist a def:PickList ;
+		:id ?picklistId ;
+		:name ?picklistName ;
+		:description ?picklistDescription ;
+		.
+
+	# @MARK:VALUES
+}

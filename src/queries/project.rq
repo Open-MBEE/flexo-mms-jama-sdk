@@ -1,0 +1,25 @@
+# hierarchical structure of all items
+
+select * {
+	$_PROJECT_NODE a def:Project ;
+		:fields ?projectFields ;
+		.
+
+	?projectFields :name ?projectName ;
+		:projectKey ?projectKey ;
+		:description ?projectDescription ;
+		.
+	
+	optional {
+		?projectFields :projectManager ?manager .
+		
+		?manager :firstName ?managerFirstName ;
+			:lastName ?managerLastName .
+		
+		optional {
+			?manager :email ?managerEmail .
+		}
+	}
+
+	# @MARK:VALUES
+}

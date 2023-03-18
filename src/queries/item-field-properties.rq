@@ -1,0 +1,14 @@
+# item properties
+
+select * {
+	?item a def:Item ;
+		:project $_PROJECT_NODE ;
+		:fields [
+			?property ?value ;
+		] ;
+		.
+	
+	filter(?property not in(rdf:type))
+
+	# @MARK:VALUES
+}
