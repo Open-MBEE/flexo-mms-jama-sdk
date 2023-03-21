@@ -2,33 +2,54 @@ import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
 import sourcemaps from 'rollup-plugin-sourcemaps';
+import {defineConfig} from 'rollup';
 
 import G_PACKAGE_JSON from './package.json' assert {type:'json'};
 
-export default {
-   input: 'src/main.ts',
-   output: [
-      {
-         file: G_PACKAGE_JSON.main,
-         format: 'commonjs',
-         sourcemap: true,
-      },
-      {
-         file: G_PACKAGE_JSON.module,
-         format: 'es',
-         sourcemap: true,
-      },
-   ],
-   watch: {
-      include: 'src/**',
-   },
-   plugins: [
-      typescript(),
+const S_EXT_NODE16 = '.node16.cjs';
 
-      commonjs(),
+export default defineConfig(() => {
 
-      resolve(),
+	const a_outputs = [
+		{
+			file: G_PACKAGE_JSON.main,
+			format: 'cjs',
+			sourcemap: true,
+		},
+		{
+			file: G_PACKAGE_JSON.main.replace(/\.cjs$/, S_EXT_NODE16),
+			format: 'cjs',
+			sourcemap: true,
+		},
+		{
+			file: G_PACKAGE_JSON.module,
+			format: 'es',
+			sourcemap: true,
+		},
+	];
 
-      sourcemaps(),
-   ],
-};
+	return a_outputs.map((g_output) => ({
+		input: 'src/main.ts',
+		output: g_output,
+		watch: {
+			include: 'src/**',
+		},
+		plugins: [
+			typescript({
+				...g_output.file.endsWith(S_EXT_NODE16)? {
+					compilerOptions: {
+						lib: ['es2021'],
+						module: 'commonjs',
+						target: 'es2021',
+					},
+				}: {},
+			}),
+
+			commonjs(),
+
+			resolve(),
+
+			sourcemaps(),
+		],
+	}));
+});

@@ -1,5 +1,6 @@
 import {JamaMms5Connection} from '../src/main.ts';
 
+debugger;
 const k_conn = await JamaMms5Connection.init({
 	auth: {
 		user: Deno.env.get('MMS5_USERNAME')!,
