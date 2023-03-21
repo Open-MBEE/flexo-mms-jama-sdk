@@ -1,16 +1,17 @@
 import type {BindingIri, BindingLiteral, GenericBindingRow, Iri, ItemFieldPropertyRow, ItemRelationshipRow, ItemRow, ItemTypeFieldRow, PicklistOptionRow, PicklistRow} from './queries';
 
 export interface ConnectionConfig {
+	auth: {
+		user: string;
+		pass: string;
+	};
 	endpoint: string | {
 		host: string;
 		org: string;
 		repo: string;
 		branch?: string;
 	};
-	auth: {
-		user: string;
-		pass: string;
-	};
+	root: string;
 }
 
 export interface SparqlPagination {
@@ -41,15 +42,26 @@ enum ItemVisitation {
 	BOTH = 0b11,
 }
 
-type Properties = Record<Iri, BindingIri | BindingLiteral>;
+type PropertiesMap = Record<Iri, BindingIri | BindingLiteral>;
 
 export const __dirname = new URL('.', import.meta.url).pathname.replace(/\/$/, '');
 
+// prep static prefixes
+const H_PREFIXES = {
+	rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+	xsd: 'http://www.w3.org/2001/XMLSchema#',
+	oge: 'https://openmbee.org/openapi-graph-extractor#',
+	hint: 'http://aws.amazon.com/neptune/vocab/v01/QueryHints#',
+};
+
+
 export class JamaMms5Connection {
 	protected _p_endpoint: string;
+	protected _p_root: string;
 	protected _s_user: string;
 	protected _s_pass: string;
 	protected _sx_bearer = '';
+	protected _sq_prefixes = '';
 
 	protected _h_queries: Record<string, string> = {};
 
@@ -60,7 +72,7 @@ export class JamaMms5Connection {
 	protected _h_items: Record<Iri, Item> = {};
 	protected _h_type_maps: Record<Iri, Record<Iri, ItemTypeFieldRow>> = {};
 	protected _h_types: Record<Iri, ItemType> = {};
-	protected _h_property_sets: Record<Iri, Properties>;
+	protected _h_property_sets: Record<Iri, PropertiesMap> = {};
 
 	protected _h_relations: Record<Iri, Relation> = {};
 	protected _h_outgoing: Record<Iri, Record<Iri, Relation>> = {};
@@ -77,7 +89,7 @@ export class JamaMms5Connection {
 	 * @param f_loader - an asynchronous callback that handles reading the given path (relative to project root) from disk
 	 * @returns the new {@link JamaMms5Connection}
 	 */
-	async init(gc_conn: ConnectionConfig, f_loader?: (p_file: string) => Promise<string>): Promise<JamaMms5Connection> {
+	static async init(gc_conn: ConnectionConfig, f_loader?: (p_file: string) => Promise<string>): Promise<JamaMms5Connection> {
 		const k_new = new JamaMms5Connection(gc_conn);
 
 		if(!f_loader) {
@@ -92,7 +104,7 @@ export class JamaMms5Connection {
 		const a_loaded = await Promise.all(A_QUERIES.map(sr => f_loader!(`queries/${sr}`)));
 
 		for(let i_query=0; i_query<a_loaded.length; i_query++) {
-			this._h_queries[A_QUERIES[i_query]] = a_loaded[i_query];
+			k_new._h_queries[A_QUERIES[i_query]] = a_loaded[i_query];
 		}
 
 		return k_new;
@@ -105,6 +117,19 @@ export class JamaMms5Connection {
 
 		this._s_user = gc_conn.auth.user;
 		this._s_pass = gc_conn.auth.pass;
+
+		const p_root = this._p_root = gc_conn.root;
+
+		// normalize prefixes string
+		this._sq_prefixes = Object.entries({
+			...H_PREFIXES,
+			'': p_root,
+			def: `${p_root}/definitions/`,
+		}).map(([si_prefix, p_iri]) => `prefix ${si_prefix}: <${p_iri}>`).join('\n');
+	}
+
+	get root(): string {
+		return this._p_root;
 	}
 
 	protected _query(si_file: string, gc_preprocess?: PreprocessConfig) {
@@ -123,7 +148,8 @@ export class JamaMms5Connection {
 			sq_query = sq_query.replace(/#\s*@MARK:VALUES/, sx_values);
 		}
 
-		return sq_query;
+		// prepend prefixes
+		return this._sq_prefixes+'\n'+sq_query;
 	}
 
 	protected async *_exec<RowType=GenericBindingRow>(sq_input: string, gc_pagination?: SparqlPagination, b_nested=false): AsyncIterableIterator<RowType[]> {
@@ -133,7 +159,7 @@ export class JamaMms5Connection {
 		}
 
 		// submit request
-		const d_res = await fetch(P_ENDPOINT, {
+		const d_res = await fetch(this._p_endpoint, {
 			method: 'POST',
 			headers: {
 				'accept': 'application/sparql-results+json',
@@ -160,11 +186,17 @@ export class JamaMms5Connection {
 				}
 
 				// login
-				const d_auth = await fetch((new URL(P_ENDPOINT)).origin+'/login', {
+				const d_auth = await fetch((new URL(this._p_endpoint)).origin+'/login', {
 					headers: {
-						'authorization': `Basic ${btoa(`${_s_user}:${_s_pass}`)}`,
+						'Authorization': `Basic ${btoa(`${_s_user}:${_s_pass}`)}`,
+						'Accept': 'application/json',
 					},
 				});
+
+				// not ok
+				if(!d_auth.ok) {
+					throw new Error(`${d_auth.status} ${await d_auth.text()}`);
+				}
 
 				// parse response json
 				const g_auth = await d_auth.json();
@@ -173,7 +205,10 @@ export class JamaMms5Connection {
 				this._sx_bearer = g_auth.token;
 
 				// retry
-				return this._exec(sq_input, gc_pagination, b_nested);
+				yield* await this._exec(sq_input, gc_pagination, b_nested);
+
+				// done
+				return;
 			}
 
 			// unexpected HTTP error
@@ -282,6 +317,9 @@ export class JamaMms5Connection {
 		}
 	}
 
+	async exhaust(di_iter: AsyncIterableIterator<unknown>): Promise<void> {
+		for await(const _w of di_iter) { /**/ }
+	}
 
 	/**
 	 * Start fetching all item types with the given pagination limit
@@ -613,7 +651,7 @@ export class JamaMms5Connection {
 
 		// local item and properties
 		let p_item_local = '';
-		let h_properties_local: Properties = {};
+		let h_properties_local: PropertiesMap = {};
 
 		// paginated batch querying
 		for await(const a_rows of this._exec<ItemFieldPropertyRow>(this._query('item-field-properties.rq'), {
@@ -656,7 +694,7 @@ export class JamaMms5Connection {
 	 * @param p_item - IRI of the item
 	 * @returns 
 	 */
-	async fetchPropertiesFor(p_item: Iri): Promise<Properties> {
+	async fetchPropertiesFor(p_item: Iri): Promise<PropertiesMap> {
 		const {_h_property_sets} = this;
 		
 		// property set is already cached
@@ -667,7 +705,7 @@ export class JamaMms5Connection {
 		h_properties = {};
 
 		// single-batch mode
-		for await(const a_rows of this._exec<ItemFieldPropertyRow>(this._query('item-field-properites.rq', {
+		for await(const a_rows of this._exec<ItemFieldPropertyRow>(this._query('item-field-properties.rq', {
 			values: {
 				item: [`<${p_item}>`],
 			},
@@ -684,17 +722,19 @@ export class JamaMms5Connection {
 	}
 }
 
-export class JamaFeature {
-	protected constructor(protected _p_iri: Iri, protected _k_connection: JamaMms5Connection) {
-
-	}
+export class Resource {
+	protected constructor(protected _p_iri: Iri, protected _k_connection: JamaMms5Connection) {}
 
 	get iri(): Iri {
 		return this._p_iri;
 	}
+
+	get connection(): JamaMms5Connection {
+		return this._k_connection;
+	}
 }
 
-export class Item extends JamaFeature {
+export class Item extends Resource {
 	constructor(protected _g_row: ItemRow, _k_conn: JamaMms5Connection) {
 		super(_g_row.item.value, _k_conn);
 	}
@@ -754,13 +794,15 @@ export class Item extends JamaFeature {
 		return this._k_connection.queryRelations(null, this.iri);
 	}
 
-	properties(): Promise<Properties> {
-		return this._k_connection.fetchPropertiesFor(this.iri);
+	async properties(): Promise<Properties> {
+		const h_properties = await this._k_connection.fetchPropertiesFor(this.iri);
+
+		return new Properties(h_properties, this);
 	}
 }
 
-export class ItemType extends JamaFeature {
-	protected _h_fields: Record<Iri, ItemTypeField>;
+export class ItemType extends Resource {
+	protected _h_fields: Record<Iri, ItemTypeField> = {};
 
 	constructor(p_item_type: Iri, protected _h_rows: Record<Iri, ItemTypeFieldRow>, _k_conn: JamaMms5Connection) {
 		super(p_item_type, _k_conn);
@@ -813,7 +855,7 @@ type JamaFieldTypeRegistry = {
 
 export type JamaFieldType = keyof JamaFieldTypeRegistry;
 
-export class ItemTypeField extends JamaFeature {
+export class ItemTypeField extends Resource {
 	constructor(protected _g_row: ItemTypeFieldRow, protected _k_item_type: ItemType, _k_conn: JamaMms5Connection) {
 		super(_g_row.field.value, _k_conn);
 	}
@@ -853,7 +895,7 @@ export class ItemTypeField extends JamaFeature {
 	}
 }
 
-export class Relation extends JamaFeature {
+export class Relation extends Resource {
 	constructor(protected _g_row: ItemRelationshipRow, _k_conn: JamaMms5Connection) {
 		super(_g_row.relation.value, _k_conn);
 	}
@@ -876,7 +918,7 @@ export class Relation extends JamaFeature {
 }
 
 
-export class Picklist extends JamaFeature {
+export class Picklist extends Resource {
 	constructor(protected _g_row: PicklistRow, _k_conn: JamaMms5Connection) {
 		super(_g_row.picklist.value, _k_conn);
 	}
@@ -902,7 +944,7 @@ export class Picklist extends JamaFeature {
 	}
 }
 
-export class PicklistOption extends JamaFeature {
+export class PicklistOption extends Resource {
 	constructor(protected _g_row: PicklistOptionRow, _k_conn: JamaMms5Connection) {
 		super(_g_row.option.value, _k_conn);
 	}
@@ -921,5 +963,78 @@ export class PicklistOption extends JamaFeature {
 
 	get value(): string {
 		return this._g_row.optionValue.value;
+	}
+}
+
+export class Properties {
+	constructor(protected _h_properties: PropertiesMap, protected _k_item: Item) {}
+
+	protected get _s_root(): string {
+		return this._k_item.connection.root
+	}
+
+	get item(): Item {
+		return this._k_item;
+	}
+
+	get raw(): PropertiesMap {
+		return this._h_properties;
+	}
+
+	/**
+	 * Returns the property set as an array
+	 */
+	get asArray(): Property[] {
+		return Object.entries(this._h_properties).map(([p, g]) => new Property(p, g, this));
+	}
+
+	/**
+	 * Access the property identified by its name
+	 * @param si_property - property name
+	 * @returns 
+	 */
+	accessByName(si_property: string): Property | null {
+		const p_property = this._s_root+si_property;
+
+		if(!this._h_properties[p_property]) return null;
+		
+		return new Property(p_property, this._h_properties[p_property], this);
+	}
+
+	/**
+	 * Attempts to find a property by label as a case-sensitive string or regex
+	 * @param z_label - the label to find
+	 * @returns 
+	 */
+	async findByLabel(z_label: string | RegExp): Promise<Property | null> {
+		for(const k_property of this.asArray) {
+			const s_label = (await k_property.field())?.label || '';
+
+			if('string' === typeof z_label? z_label === s_label: z_label.test(s_label)) {
+				return k_property;
+			}
+		}
+
+		return null;
+	}
+}
+
+export class Property extends Resource {
+	constructor(p_property: Iri, protected _g_value: BindingIri | BindingLiteral, protected _k_props: Properties) {
+		super(p_property, _k_props.item.connection);
+	}
+
+	get name(): string {
+		return this._p_iri.slice(this._k_connection.root.length);
+	}
+
+	async field(): Promise<ItemTypeField | null> {
+		const k_type = await this._k_props.item.itemType();
+
+		return await k_type?.fieldByName(this.name) || null;
+	}
+
+	get value(): string {
+		return this._g_value.value;
 	}
 }

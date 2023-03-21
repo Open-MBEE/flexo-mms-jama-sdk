@@ -1,0 +1,27 @@
+{
+  "name": "mms5-jama-sdk",
+  "private": true,
+  "version": "0.0.1",
+  "description": "",
+  "main": "dist/main.cjs",
+  "module": "dist/main.mjs",
+  "scripts": {
+    "build": "rollup -c rollup.config.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^24.0.1",
+    "@rollup/plugin-node-resolve": "^15.0.1",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@tsconfig/node18": "^1.0.1",
+    "@types/node": "^18.15.5",
+    "rollup": "^3.20.0",
+    "rollup-plugin-sourcemaps": "^0.6.3",
+    "tslib": "^2.5.0"
+  }
+}
