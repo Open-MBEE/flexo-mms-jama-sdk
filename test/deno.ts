@@ -13,6 +13,7 @@ const k_conn = await JamaMms5Connection.init({
 await k_conn.exhaust(k_conn.allItemTypes());
 await k_conn.exhaust(k_conn.allProperties());
 
+
 for await(const k_item of k_conn.allItems()) {
 	const k_props = await k_item.properties();
 
