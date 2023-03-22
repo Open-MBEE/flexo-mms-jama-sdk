@@ -93,8 +93,24 @@ export class JamaMms5Connection {
 		const k_new = new JamaMms5Connection(gc_conn);
 
 		if(!f_loader) {
+			// deno
 			if('undefined' !== typeof globalThis['Deno']) {
 				f_loader = sr => Deno.readTextFile(`${__dirname}/${sr}`);
+			}
+			// node
+			else if('undefined' !== typeof process) {
+				// cjs require'able
+				if('function' === typeof require) {
+					const {promises:{readFile}} = require('fs');
+
+					f_loader = sr => readFile(`${__dirname}/${sr}`, 'utf-8');
+				}
+				// esm only
+				else {
+					const {promises:{readFile}} = await import('fs');
+
+					f_loader = sr => readFile(`${__dirname}/${sr}`, 'utf-8');
+				}
 			}
 			else {
 				throw new TypeError(`Missing required loader argument for current environment`);

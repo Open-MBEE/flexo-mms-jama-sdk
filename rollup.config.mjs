@@ -2,7 +2,9 @@ import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
 import sourcemaps from 'rollup-plugin-sourcemaps';
+import copy from 'rollup-plugin-copy';
 import {defineConfig} from 'rollup';
+import fs from 'fs';
 
 import G_PACKAGE_JSON from './package.json' assert {type:'json'};
 
@@ -50,6 +52,13 @@ export default defineConfig(() => {
 			resolve(),
 
 			sourcemaps(),
+
+			copy({
+				targets: [{
+					src: 'src/queries/*',
+					dest: 'dist/queries',
+				}],
+			}),
 		],
 	}));
 });
