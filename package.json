@@ -1,16 +1,16 @@
 {
   "name": "@openmbee/mms5-jama-sdk",
-  "private": true,
-  "version": "0.0.1-alpha.0",
+  "version": "0.0.1-alpha.1",
   "description": "",
   "main": "dist/main.node16.cjs",
   "module": "dist/main.mjs",
   "files": ["dist/"],
+  "types": "dist/main.d.ts",
   "scripts": {
     "build": "rollup -c rollup.config.mjs"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=16.0.0"
   },
   "keywords": [],
   "author": "",
