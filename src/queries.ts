@@ -84,3 +84,11 @@ export interface ItemRow {
 	lastActivityDate: BindingLiteral;
 	parent?: BindingIri;
 }
+
+export interface UserRow {
+	user: BindingIri;
+	username: BindingLiteral;
+	firstName: BindingLiteral;
+	lastName: BindingLiteral;
+	email?: BindingLiteral;
+}

@@ -1,4 +1,5 @@
 import type {BindingIri, BindingLiteral, GenericBindingRow, Iri, ItemFieldPropertyRow, ItemRelationshipRow, ItemRow, ItemTypeFieldRow, PicklistOptionRow, PicklistRow} from './queries';
+import { UserRow } from './queries.ts';
 
 export interface ConnectionConfig {
 	auth: {
@@ -73,6 +74,7 @@ export class JamaMms5Connection {
 	protected _h_type_maps: Record<Iri, Record<Iri, ItemTypeFieldRow>> = {};
 	protected _h_types: Record<Iri, ItemType> = {};
 	protected _h_property_sets: Record<Iri, PropertiesMap> = {};
+	protected _h_users: Record<Iri, User> = {};
 
 	protected _h_relations: Record<Iri, Relation> = {};
 	protected _h_outgoing: Record<Iri, Record<Iri, Relation>> = {};
@@ -333,9 +335,46 @@ export class JamaMms5Connection {
 		}
 	}
 
+	/**
+	 * Exhausts the given async iterator for side-effects (i.e., caching)
+	 * @param di_iter - the async iterator
+	 */
 	async exhaust(di_iter: AsyncIterableIterator<unknown>): Promise<void> {
 		for await(const _w of di_iter) { /**/ }
 	}
+
+
+	/**
+	 * Similar to exhaust but collects the iterator's output to a list
+	 * @param di_iter - the async iterator
+	 * @returns the collection
+	 */
+	async collect<w_collect>(di_iter: AsyncIterableIterator<w_collect>): Promise<w_collect[]> {
+		const a_collect: w_collect[] = [];
+
+		for await(const _w of di_iter) {
+			a_collect.push(_w as w_collect);
+		}
+
+		return a_collect;
+	}
+
+	
+	/**
+	 * Similar to exhaust but collects the iterator's output to a list
+	 * @param di_iter - the async iterator
+	 * @returns the collection
+	 */
+	async index<w_yield>(di_iter: AsyncIterableIterator<w_yield> | Iterable<w_yield>, f_by: (k: w_yield) => string): Promise<Record<string, w_yield>> {
+		const h_index: Record<string, w_yield> = Object.create(null);
+
+		for await(const w_each of di_iter) {
+			h_index[f_by(w_each)] = w_each;
+		}
+
+		return h_index;
+	}
+
 
 	/**
 	 * Start fetching all item types with the given pagination limit
@@ -662,7 +701,7 @@ export class JamaMms5Connection {
 	 * @param n_pagination - number of rows to limit each query
 	 * @yields an {@link Item} one at a time
 	 */
-	async *allProperties(n_pagination=1000): AsyncIterableIterator<typeof this._h_property_sets> {
+	async *allProperties(n_pagination=1000): AsyncIterableIterator<Record<Iri, PropertiesMap>> {
 		const {_h_property_sets} = this;
 
 		// local item and properties
@@ -736,6 +775,98 @@ export class JamaMms5Connection {
 		// cache and return
 		return _h_property_sets[p_item] = h_properties;
 	}
+
+
+	/**
+	 * Start fetching all users with the given pagination limit
+	 * @param n_pagination - number of rows to limit each query
+	 * @yields a {@link User} one at a time
+	 */
+	async *allUsers(n_pagination=1000): AsyncIterableIterator<User> {
+		const {_h_users} = this;
+
+		// paginated batch querying
+		for await(const a_rows of this._exec<UserRow>(this._query('users.rq'), {
+			order: 'user',
+			limit: n_pagination,
+			offset: 0,
+		})) {
+			const a_yields: User[] = [];
+
+			// first, cache all users returned in this query
+			for(const g_row of a_rows) {
+				a_yields.push(_h_users[g_row.user.value] = new User(g_row, this));
+			}
+
+			// then, yield each one
+			yield* a_yields;
+		}
+	}
+
+
+	/**
+	 * Attempt to find a specific user by its IRI, fetching from MMS5 if not yet cached
+	 * @param p_item - IRI of the user to fetch
+	 * @returns the {@link User}
+	 */
+	async fetchUser(p_user: Iri): Promise<User> {
+		const {_h_users} = this;
+
+		// cache hit; return
+		if(_h_users[p_user]) return _h_users[p_user];
+
+		// fetch via query
+		for await(const a_rows of this._exec<UserRow>(this._query('items.rq', {
+			values: {
+				user: [`<${p_user}>`],
+			},
+		}))) {
+			// user not found
+			if(!a_rows.length) throw new Error(`User is missing from dataset: <${p_user}>`);
+	
+			// cache and return
+			return _h_users[p_user] = new User(a_rows[0], this);
+		}
+
+		throw new Error(`Critical item query failure`);
+	}
+
+
+	/**
+	 * Query for users by username
+	 * @param h_values - the values to use for querying
+	 * @returns the first matching {@link User} or `null` if not found
+	 */
+	async queryUsers(h_values: {username?:string[]; firstName?:string[]; lastName?:string[]; email?:string[]}): Promise<User[]> {
+		const {_h_users} = this;
+
+		// prep results
+		const a_users: User[] = [];
+
+		// query with values
+		for await(const a_rows of this._exec<UserRow>(this._query('users.rq', {
+			values: h_values,
+		}))) {
+			// each user
+			for(const g_row of a_rows) {
+				const p_user = g_row.user.value;
+
+				// user already cached
+				const k_user = _h_users[p_user];
+				if(k_user) {
+					a_users.push(k_user);
+				}
+				// new user; create and cache
+				else {
+					a_users.push(new User(g_row, this));
+				}
+			}
+		}
+
+		// return results
+		return a_users;
+	}
+
 }
 
 export class Resource {
@@ -743,6 +874,10 @@ export class Resource {
 
 	get iri(): Iri {
 		return this._p_iri;
+	}
+
+	get suffix(): string {
+		return this._p_iri.slice(this._k_connection.root.length-1);
 	}
 
 	get connection(): JamaMms5Connection {
@@ -775,7 +910,7 @@ export class Item extends Resource {
 	}
 
 	get itemKey(): string {
-		return this._g_row.itemType.value;
+		return this._g_row.itemKey.value;
 	}
 
 	get itemName(): string {
@@ -904,7 +1039,7 @@ export class ItemTypeField extends Resource {
 		const si_picklist = this._g_row.picklistId!.value;
 
 		// construct picklist IRI
-		const p_picklist = this.iri.replace(/\/[^\/]+\/[^\/]+/, '')+`/picklists/${si_picklist}` as Iri;
+		const p_picklist = this._k_connection.root.replace(/#$/, `/picklists/${si_picklist}`) as Iri;
 
 		// fetch picklist
 		return this._k_connection.fetchPicklist(p_picklist);
@@ -1052,5 +1187,31 @@ export class Property extends Resource {
 
 	get value(): string {
 		return this._g_value.value;
+	}
+}
+
+export class User extends Resource {
+	constructor(protected _g_row: UserRow, _k_conn: JamaMms5Connection) {
+		super(_g_row.user.value, _k_conn);
+	}
+
+	get username(): string {
+		return this._g_row.username.value;
+	}
+
+	get firstName(): string {
+		return this._g_row.firstName.value;
+	}
+
+	get lastName(): string {
+		return this._g_row.lastName.value;
+	}
+
+	get fullName(): string {
+		return this.firstName+' '+this.lastName;
+	}
+
+	get email(): string {
+		return this._g_row.email?.value || '';
 	}
 }
