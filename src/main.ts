@@ -1,5 +1,5 @@
-import type {BindingIri, BindingLiteral, GenericBindingRow, Iri, ItemFieldPropertyRow, ItemRelationshipRow, ItemRow, ItemTypeFieldRow, PicklistOptionRow, PicklistRow} from './queries';
-import { UserRow } from './queries.ts';
+import type {BindingIri, BindingLiteral, GenericBindingRow, Iri, ItemFieldPropertyRow, ItemRelationshipRow, ItemRow, ItemTypeFieldRow, PicklistOptionRow, PicklistRow} from './queries.ts';
+import {UserRow} from './queries.ts';
 
 export interface ConnectionConfig {
 	auth: {
@@ -21,6 +21,21 @@ export interface SparqlPagination {
 	offset: number;
 }
 
+type Arrayable<w_thing> = w_thing | w_thing[];
+
+export type QueryQualifiers<
+   g_row extends object=object
+> = {
+   [si_var in keyof g_row]?: g_row[si_var] extends infer z_binding
+      ? z_binding extends BindingIri
+         ? Arrayable<`<${Iri}>` | `${string}:${string}`>
+         : z_binding extends BindingLiteral
+            ? Arrayable<string | RegExp>
+            : never
+      : never;
+};
+
+
 const A_QUERIES = [
 	'item-field-properties.rq',
 	'item-relationships.rq',
@@ -32,8 +47,8 @@ const A_QUERIES = [
 	'users.rq',
 ];
 
-interface PreprocessConfig {
-	values: Record<string, string[]>;
+interface PreprocessConfig<g_row extends object=object> {
+	query: QueryQualifiers<g_row>;
 }
 
 enum ItemVisitation {
@@ -55,6 +70,17 @@ const H_PREFIXES = {
 	hint: 'http://aws.amazon.com/neptune/vocab/v01/QueryHints#',
 };
 
+
+function transform_query_primitive(si_var: string, z_primitive: string | RegExp): string {
+	if('string' === typeof z_primitive) {
+		return `?${si_var} = ${z_primitive}`;
+	}
+	else if(z_primitive instanceof RegExp) {
+		return `regex(?${si_var}, "${z_primitive.source.replace(/"/g, '\\"').replace(/\\/g, '\\\\')}", "${z_primitive.flags}")`;
+	}
+
+	throw new TypeError(`Invalid query primitive: ${typeof z_primitive} (${z_primitive})`);
+}
 
 export class JamaMms5Connection {
 	protected _p_endpoint: string;
@@ -154,16 +180,27 @@ export class JamaMms5Connection {
 		// query string
 		let sq_query = this._h_queries[si_file];
 
-		// value preprocessing
-		if(gc_preprocess?.values) {
-			// prep values string
-			let sx_values = '';
-			for(const [s_variable, a_values] of Object.entries(gc_preprocess.values)) {
-				sx_values += `values ?${s_variable} { ${a_values.join(' ')} } `;
+		// query preprocessing
+		if(gc_preprocess?.query) {
+			// prep values/filters string
+			let sx_values_filters = '';
+			for(const [si_variable, z_values] of Object.entries(gc_preprocess.query)) {
+				// coerce into array
+				const a_values: Array<string | RegExp> = Array.isArray(z_values)? z_values: [z_values];
+
+				// all strings; use values
+				if(a_values.every(w => 'string' === typeof w)) {
+					sx_values_filters += `values ?${si_variable} { ${a_values.join(' ')} } `;
+				}
+				// mixed; use filter(s)
+				else {
+					const a_filters = a_values.map((w_value) => transform_query_primitive(si_variable, w_value));
+					sx_values_filters += `filter(${a_filters.join(' || ')})`;
+				}
 			}
 
 			// replace values
-			sq_query = sq_query.replace(/#\s*@MARK:VALUES/, sx_values);
+			sq_query = sq_query.replace(/#\s*@MARK:VALUES/, sx_values_filters);
 		}
 
 		// prepend prefixes
@@ -265,77 +302,6 @@ export class JamaMms5Connection {
 
 
 	/**
-	 * Start fetching all items with the given pagination limit
-	 * @param n_pagination - number of rows to limit each query
-	 * @yields an {@link Item} one at a time
-	 */
-	async *allItems(n_pagination=1000): AsyncIterableIterator<Item> {
-		const {_h_items} = this;
-
-		// paginated batch querying
-		for await(const a_rows of this._exec<ItemRow>(this._query('items.rq'), {
-			order: 'item',
-			limit: n_pagination,
-			offset: 0,
-		})) {
-			const a_yields: Item[] = [];
-
-			// first, cache all items returned in this query
-			for(const g_row of a_rows) {
-				a_yields.push(_h_items[g_row.item.value] = new Item(g_row, this));
-			}
-
-			// then, yield each one
-			yield* a_yields;
-		}
-
-		// all items have been cached
-		this._b_all_items = true;
-	}
-
-
-	/**
-	 * Attempt to find a specific item by its IRI, fetching from MMS5 if not yet cached
-	 * @param p_item - IRI of the item to fetch
-	 * @returns the {@link Item}
-	 */
-	async fetchItem(p_item: Iri): Promise<Item> {
-		const {_h_items} = this;
-
-		// cache hit; return
-		if(_h_items[p_item]) return _h_items[p_item];
-
-		// fetch via query
-		for await(const a_rows of this._exec<ItemRow>(this._query('items.rq', {
-			values: {
-				item: [`<${p_item}>`],
-			},
-		}))) {
-			// item not found
-			if(!a_rows.length) throw new Error(`Item is missing from dataset: <${p_item}>`);
-	
-			// cache and return
-			return _h_items[p_item] = new Item(a_rows[0], this);
-		}
-
-		throw new Error(`Critical item query failure`);
-	}
-
-	protected _process_type_rows(a_rows: ItemTypeFieldRow[]) {
-		const {_h_type_maps} = this;
-
-		// first, cache all items returned in this query
-		for(const g_row of a_rows) {
-			const p_item_type = g_row.itemType.value;
-
-			// build fields table for item type
-			Object.assign(_h_type_maps[p_item_type] = _h_type_maps[p_item_type] || {}, {
-				[g_row.field.value]: g_row,
-			});
-		}
-	}
-
-	/**
 	 * Exhausts the given async iterator for side-effects (i.e., caching)
 	 * @param di_iter - the async iterator
 	 */
@@ -377,6 +343,102 @@ export class JamaMms5Connection {
 
 
 	/**
+	 * Start fetching all items with the given pagination limit
+	 * @param n_pagination - number of rows to limit each query
+	 * @yields an {@link Item} one at a time
+	 */
+	async *allItems(n_pagination=1000): AsyncIterableIterator<Item> {
+		const {_h_items} = this;
+
+		// paginated batch querying
+		for await(const a_rows of this._exec<ItemRow>(this._query('items.rq'), {
+			order: 'item',
+			limit: n_pagination,
+			offset: 0,
+		})) {
+			const a_yields: Item[] = [];
+
+			// first, cache all items returned in this query
+			for(const g_row of a_rows) {
+				a_yields.push(_h_items[g_row.item.value] = new Item(g_row, this));
+			}
+
+			// then, yield each one
+			yield* a_yields;
+		}
+
+		// all items have been cached
+		this._b_all_items = true;
+	}
+
+
+	/**
+	 * Attempt to find a specific item by its IRI, fetching from MMS5 if not yet cached
+	 * @param p_item - IRI of the item to fetch
+	 * @returns the {@link Item}
+	 */
+	async fetchItem(p_item: Iri): Promise<Item> {
+		const {_h_items} = this;
+
+		// cache hit; return
+		if(_h_items[p_item]) return _h_items[p_item];
+
+		// fetch via query
+		for await(const k_item of this.queryItems({
+			item: `<${p_item}>`,
+		}, 1)) {
+			return k_item;
+		}
+
+		// item not found
+		throw new Error(`Item is missing from dataset: <${p_item}>`);
+	}
+
+
+	/**
+	 * Query for items
+	 */
+	async *queryItems(h_query: QueryQualifiers<ItemRow>, n_pagination=1000): AsyncIterableIterator<Item> {		
+		const {_h_items} = this;
+
+		// fetch via query
+		for await(const a_rows of this._exec<ItemRow>(this._query('items.rq', {
+			query: h_query,
+		}), {
+			order: 'item',
+			limit: n_pagination,
+			offset: 0,
+		})) {
+			// each row
+			for(const g_row of a_rows) {
+				const p_item = g_row.item.value;
+
+				// not yet cached; cache
+				if(!_h_items[p_item]) _h_items[p_item] = new Item(g_row, this);
+				
+				// yield
+				yield _h_items[p_item]
+			}
+		}
+	}
+
+
+	protected _process_type_rows(a_rows: ItemTypeFieldRow[]) {
+		const {_h_type_maps} = this;
+
+		// first, cache all items returned in this query
+		for(const g_row of a_rows) {
+			const p_item_type = g_row.itemType.value;
+
+			// build fields table for item type
+			Object.assign(_h_type_maps[p_item_type] = _h_type_maps[p_item_type] || {}, {
+				[g_row.field.value]: g_row,
+			});
+		}
+	}
+
+
+	/**
 	 * Start fetching all item types with the given pagination limit
 	 * @param n_pagination - number of rows to limit each query
 	 * @yields an {@link ItemType} one at a time
@@ -410,7 +472,7 @@ export class JamaMms5Connection {
 
 		// single-batch mode
 		for await(const a_rows of this._exec<ItemTypeFieldRow>(this._query('item-type-fields.rq', {
-			values: {
+			query: {
 				itemType: [`<${p_item_type}>`],
 			},
 		}))) {
@@ -481,7 +543,7 @@ export class JamaMms5Connection {
 
 		// single-batch mode
 		for await(const a_rows of this._exec<ItemRelationshipRow>(this._query('item-relationships.rq', {
-			values: {
+			query: {
 				itemType: [`<${p_relation}>`],
 			},
 		}))) {
@@ -536,7 +598,7 @@ export class JamaMms5Connection {
 
 		// query with values
 		for await(const a_rows of this._exec<ItemRelationshipRow>(this._query('item-relationships.rq', {
-			values: {
+			query: {
 				...p_src && !(xc_cached & ItemVisitation.OUTGOING)? {
 					src: [`<${p_src}>`],
 				}: {},
@@ -584,7 +646,7 @@ export class JamaMms5Connection {
 
 		// single-batch mode
 		for await(const a_rows of this._exec<PicklistRow>(this._query('picklists.rq', {
-			values: {
+			query: {
 				picklist: [`<${p_picklist}>`],
 			},
 		}))) {
@@ -624,7 +686,7 @@ export class JamaMms5Connection {
 		if(a_options.length) {
 			// single-batch mode
 			for await(const a_rows of this._exec<PicklistOptionRow>(this._query('picklist-options.rq', {
-				values: {
+				query: {
 					option: a_options.map(p => `<${p}>`),
 				},
 			}))) {
@@ -666,7 +728,7 @@ export class JamaMms5Connection {
 
 		// single-batch mode
 		for await(const a_rows of this._exec<PicklistOptionRow>(this._query('picklist-options.rq', {
-			values: {
+			query: {
 				picklist: [`<${p_picklist}>`],
 			},
 		}))) {
@@ -705,7 +767,7 @@ export class JamaMms5Connection {
 		const {_h_property_sets} = this;
 
 		// local item and properties
-		let p_item_local = '';
+		let p_item_local = '' as Iri;
 		let h_properties_local: PropertiesMap = {};
 
 		// paginated batch querying
@@ -761,7 +823,7 @@ export class JamaMms5Connection {
 
 		// single-batch mode
 		for await(const a_rows of this._exec<ItemFieldPropertyRow>(this._query('item-field-properties.rq', {
-			values: {
+			query: {
 				item: [`<${p_item}>`],
 			},
 		}))) {
@@ -817,7 +879,7 @@ export class JamaMms5Connection {
 
 		// fetch via query
 		for await(const a_rows of this._exec<UserRow>(this._query('items.rq', {
-			values: {
+			query: {
 				user: [`<${p_user}>`],
 			},
 		}))) {
@@ -837,7 +899,7 @@ export class JamaMms5Connection {
 	 * @param h_values - the values to use for querying
 	 * @returns the first matching {@link User} or `null` if not found
 	 */
-	async queryUsers(h_values: {username?:string[]; firstName?:string[]; lastName?:string[]; email?:string[]}): Promise<User[]> {
+	async queryUsers(h_query: QueryQualifiers<UserRow>): Promise<User[]> {
 		const {_h_users} = this;
 
 		// prep results
@@ -845,7 +907,7 @@ export class JamaMms5Connection {
 
 		// query with values
 		for await(const a_rows of this._exec<UserRow>(this._query('users.rq', {
-			values: h_values,
+			query: h_query,
 		}))) {
 			// each user
 			for(const g_row of a_rows) {

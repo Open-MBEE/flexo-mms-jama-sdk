@@ -43,6 +43,13 @@ else {
 	// index all users by username
 	const h_users = await k_conn.index(k_conn.allUsers(), k => k.username);
 
+	for await(const k_item of await k_conn.queryItems({
+		itemTypeDisplay: /requirement/i,
+	}, 100)) {
+		console.log(k_item);
+	}
+
+
 	const k_item = await k_conn.fetchItem('https://cae-jama.jpl.nasa.gov/rest/v1/items/1821237');
 
 	const k_props = await k_item.properties();
