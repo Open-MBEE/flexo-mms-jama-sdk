@@ -13,6 +13,9 @@ export interface ConnectionConfig {
 		branch?: string;
 	};
 	root: string;
+	debug?: {
+		pagination?: boolean;
+	};
 }
 
 export interface SparqlPagination {
@@ -89,12 +92,14 @@ export class JamaMms5Connection {
 	protected _s_pass: string;
 	protected _sx_bearer = '';
 	protected _sq_prefixes = '';
+	protected _b_debug_pagination = false;
 
 	protected _h_queries: Record<string, string> = {};
 
 	// cache state
 	protected _b_all_items = false;
 	protected _b_all_relations = false;
+	protected _b_all_picklists = false;
 
 	protected _h_items: Record<Iri, Item> = {};
 	protected _h_type_maps: Record<Iri, Record<Iri, ItemTypeFieldRow>> = {};
@@ -161,6 +166,8 @@ export class JamaMms5Connection {
 
 		this._s_user = gc_conn.auth.user;
 		this._s_pass = gc_conn.auth.pass;
+
+		if(gc_conn.debug?.pagination) this._b_debug_pagination = true;
 
 		const p_root = this._p_root = gc_conn.root;
 
@@ -278,7 +285,9 @@ export class JamaMms5Connection {
 
 		// pagination is being used
 		if(gc_pagination && !b_nested) {
-			// console.debug(`Processed paginated rows ${gc_pagination.offset} - ${gc_pagination.offset + a_bindings.length}`);
+			if(this._b_debug_pagination) {
+				console.debug(`Processed paginated rows ${gc_pagination.offset} - ${gc_pagination.offset + a_bindings.length}`);
+			}
 
 			// prepare to repeat limit/offset requests at 1 level call stack depth
 			let a_next = a_bindings;
@@ -443,11 +452,15 @@ export class JamaMms5Connection {
 	 * @param n_pagination - number of rows to limit each query
 	 * @yields an {@link ItemType} one at a time
 	 */
-	async *allItemTypes(): AsyncIterableIterator<ItemType> {
+	async *allItemTypes(n_pagination=1000): AsyncIterableIterator<ItemType> {
 		const {_h_types, _h_type_maps} = this;
 
 		// paginated batch querying
-		for await(const a_rows of this._exec<ItemTypeFieldRow>(this._query('item-type-fields.rq'))) {
+		for await(const a_rows of this._exec<ItemTypeFieldRow>(this._query('item-type-fields.rq'), {
+			order: 'itemType',
+			limit: n_pagination,
+			offset: 0,
+		})) {
 			this._process_type_rows(a_rows);
 
 			// then, yield each one
@@ -629,6 +642,36 @@ export class JamaMms5Connection {
 
 		// return results
 		return a_relations;
+	}
+
+
+	/**
+	 * Attempt to find a picklist by its IRI, fetching from MMS5 if not yet cached
+	 * @param p_picklist - IRI of the picklist
+	 * @returns array of {@link PicklistOption}s
+	 */
+	async *allPicklists(n_pagination=1000): AsyncIterableIterator<Picklist> {
+		const {_h_picklists} = this;
+
+		// paginated batch querying
+		for await(const a_rows of this._exec<PicklistRow>(this._query('picklists.rq'), {
+			order: 'picklist',
+			limit: n_pagination,
+			offset: 0,
+		})) {
+			const a_yields: Picklist[] = [];
+
+			// first, cache all picklists returned in this query
+			for(const g_row of a_rows) {
+				a_yields.push(_h_picklists[g_row.picklist.value] = new Picklist(g_row, this));
+			}
+
+			// then, yield each one
+			yield* a_yields;
+		}
+
+		// all picklists have been cached
+		this._b_all_picklists = true;
 	}
 
 
