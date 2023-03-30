@@ -100,6 +100,7 @@ export class JamaMms5Connection {
 	protected _b_all_items = false;
 	protected _b_all_relations = false;
 	protected _b_all_picklists = false;
+	protected _b_all_options = false;
 
 	protected _h_items: Record<Iri, Item> = {};
 	protected _h_type_maps: Record<Iri, Record<Iri, ItemTypeFieldRow>> = {};
@@ -710,6 +711,37 @@ export class JamaMms5Connection {
 
 		throw new Error(`Picklist not found: <${p_picklist}>`);
 	}
+
+	/**
+	 * Start fetching all picklist options
+	 * @param n_pagination - pagination limit
+	 * @yields a {@link PicklistOption} one at a time
+	 */
+	async *allPicklistOptions(n_pagination=1000): AsyncIterableIterator<PicklistOption> {
+		const {_h_options} = this;
+
+		// paginated batch querying
+		for await(const a_rows of this._exec<PicklistOptionRow>(this._query('picklist-options.rq'), {
+			order: 'option',
+			limit: n_pagination,
+			offset: 0,
+		})) {
+			const a_yields: PicklistOption[] = [];
+
+			// first, cache all picklist options returned in this query
+			for(const g_row of a_rows) {
+				a_yields.push(_h_options[g_row.option.value] = new PicklistOption(g_row, this));
+			}
+
+			// then, yield each one
+			yield* a_yields;
+		}
+
+		// all picklist options have been cached
+		this._b_all_options = true;
+	}
+
+
 
 	async fetchPicklistOptions(a_options: Iri[]): Promise<Record<Iri, PicklistOption>> {
 		const {_h_options} = this;
