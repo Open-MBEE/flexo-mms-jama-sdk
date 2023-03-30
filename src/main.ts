@@ -284,26 +284,29 @@ export class JamaMms5Connection {
 		yield a_bindings;
 
 		// pagination is being used
-		if(gc_pagination && !b_nested) {
+		if(gc_pagination) {
 			if(this._b_debug_pagination) {
 				console.debug(`Processed paginated rows ${gc_pagination.offset} - ${gc_pagination.offset + a_bindings.length}`);
 			}
 
-			// prepare to repeat limit/offset requests at 1 level call stack depth
-			let a_next = a_bindings;
+			// not in a nested context
+			if(!b_nested) {
+				// prepare to repeat limit/offset requests at 1 level call stack depth
+				let a_next = a_bindings;
 
-			// possibly more results
-			while(a_next.length === gc_pagination.limit) {
-				// fetch next batch of results
-				for await(const a_batch of this._exec<RowType>(sq_input, {
-					...gc_pagination,
-					offset: gc_pagination.offset + a_bindings.length,
-				}, true)) {
-					// yield to top caller
-					yield a_batch;
+				// possibly more results
+				while(a_next.length === gc_pagination.limit) {
+					// fetch next batch of results
+					for await(const a_batch of this._exec<RowType>(sq_input, {
+						...gc_pagination,
+						offset: gc_pagination.offset + a_bindings.length,
+					}, true)) {
+						// yield to top caller
+						yield a_batch;
 
-					// there will only be exactly one yield from the above call
-					a_next = a_batch;
+						// there will only be exactly one yield from the above call
+						a_next = a_batch;
+					}
 				}
 			}
 		}
