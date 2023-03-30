@@ -294,18 +294,24 @@ export class JamaMms5Connection {
 				// prepare to repeat limit/offset requests at 1 level call stack depth
 				let a_next = a_bindings;
 
+				// track offset
+				let i_offset = gc_pagination.offset + a_next.length;
+
 				// possibly more results
 				while(a_next.length === gc_pagination.limit) {
 					// fetch next batch of results
 					for await(const a_batch of this._exec<RowType>(sq_input, {
 						...gc_pagination,
-						offset: gc_pagination.offset + a_bindings.length,
+						offset: i_offset,
 					}, true)) {
 						// yield to top caller
 						yield a_batch;
 
 						// there will only be exactly one yield from the above call
 						a_next = a_batch;
+
+						// advance offset
+						i_offset += a_next.length;
 					}
 				}
 			}
