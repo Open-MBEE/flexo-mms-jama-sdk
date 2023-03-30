@@ -873,10 +873,10 @@ export class JamaMms5Connection {
 
 					// reset local properties map
 					h_properties_local = {};
-
-					// advance local pointer
-					p_item_local = p_item;
 				}
+
+				// advance local pointer
+				p_item_local = p_item;
 
 				// save property to local properties map
 				h_properties_local[g_row.property.value] = g_row.value;
