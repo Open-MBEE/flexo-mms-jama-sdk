@@ -61,7 +61,7 @@ enum ItemVisitation {
 	BOTH = 0b11,
 }
 
-type PropertiesMap = Record<Iri, BindingIri | BindingLiteral>;
+type PropertiesMap = Record<Iri, Array<BindingIri | BindingLiteral>>;
 
 export const __dirname = new URL('.', import.meta.url).pathname.replace(/\/$/, '');
 
@@ -862,6 +862,7 @@ export class JamaMms5Connection {
 		})) {
 			// each property row
 			for(const g_row of a_rows) {
+				const p_property = g_row.property.value;
 				const p_item = g_row.item.value;
 
 				// different item means previous can be cached (since ordered by ?item)
@@ -879,7 +880,7 @@ export class JamaMms5Connection {
 				p_item_local = p_item;
 
 				// save property to local properties map
-				h_properties_local[g_row.property.value] = g_row.value;
+				(h_properties_local[p_property] = h_properties_local[p_property] || []).push(g_row.value);
 			}
 		}
 
@@ -891,7 +892,7 @@ export class JamaMms5Connection {
 
 
 	/**
-	 * Attempt to find all options for a given item by its IRI, fetching from MMS5 if not yet cached
+	 * Attempt to find all properties for a given item by its IRI, fetching from MMS5 if not yet cached
 	 * @param p_item - IRI of the item
 	 * @returns 
 	 */
@@ -911,10 +912,12 @@ export class JamaMms5Connection {
 				item: [`<${p_item}>`],
 			},
 		}))) {
-			// each option
+			// each property
 			for(const g_row of a_rows) {
-				// set mapping
-				h_properties[g_row.property.value] = g_row.value;
+				const p_property = g_row.property.value;
+
+				// add value to mapping set
+				(h_properties[p_property] = h_properties[p_property] || []).push(g_row.value);
 			}
 		}
 
@@ -1282,7 +1285,7 @@ export class Properties {
 	 * Returns the property set as an array
 	 */
 	get asArray(): Property[] {
-		return Object.entries(this._h_properties).map(([p, g]) => new Property(p, g, this));
+		return Object.entries(this._h_properties).map(([p, a]) => new Property(p as Iri, a, this));
 	}
 
 	/**
@@ -1291,7 +1294,7 @@ export class Properties {
 	 * @returns 
 	 */
 	accessByName(si_property: string): Property | null {
-		const p_property = this._s_root+si_property;
+		const p_property = this._s_root+si_property as Iri;
 
 		if(!this._h_properties[p_property]) return null;
 		
@@ -1317,7 +1320,7 @@ export class Properties {
 }
 
 export class Property extends Resource {
-	constructor(p_property: Iri, protected _g_value: BindingIri | BindingLiteral, protected _k_props: Properties) {
+	constructor(p_property: Iri, protected _a_values: Array<BindingIri | BindingLiteral>, protected _k_props: Properties) {
 		super(p_property, _k_props.item.connection);
 	}
 
@@ -1331,8 +1334,28 @@ export class Property extends Resource {
 		return await k_type?.fieldByName(this.name) || null;
 	}
 
+	get isEmpty(): boolean {
+		return 0 === this._a_values.length;
+	}
+
+	get isSingular(): boolean {
+		return 1 === this._a_values.length;
+	}
+
+	get isMulti(): boolean {
+		return this._a_values.length > 1;
+	}
+
+	get values(): string[] {
+		return this._a_values.map(g => g.value);
+	}
+
 	get value(): string {
-		return this._g_value.value;
+		if(1 !== this._a_values.length) {
+			throw new Error(`Cannot access '.value' of multi-valued property`);
+		}
+
+		return this._a_values[0].value;
 	}
 }
 
