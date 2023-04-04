@@ -767,7 +767,7 @@ export class JamaMms5Connection {
 		}
 
 		// something(s) to fetch
-		if(a_options.length) {
+		if(a_fetch.length) {
 			// single-batch mode
 			for await(const a_rows of this._exec<PicklistOptionRow>(this._query('picklist-options.rq', {
 				query: {
