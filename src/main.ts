@@ -1352,7 +1352,7 @@ export class Property extends Resource {
 
 	get value(): string {
 		if(1 !== this._a_values.length) {
-			throw new Error(`Cannot access '.value' of multi-valued property`);
+			throw new Error(`Cannot access '.value' of multi-valued property <${this.iri}>`);
 		}
 
 		return this._a_values[0].value;
