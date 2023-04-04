@@ -403,7 +403,10 @@ export class JamaMms5Connection {
 			${this._sq_prefixes}
 			select ?when {
 				?branch a mms:Branch ;
-					mms:id "${si_branch}"
+					mms:id "${si_branch}" ;
+					mms:commit [
+						mms:submitted ?when ;
+					] .
 			}
 		`, null, `${p_root}/orgs/${si_org}/repos/${si_repo}/query`)) {
 			return {
