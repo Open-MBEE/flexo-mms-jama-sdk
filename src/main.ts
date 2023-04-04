@@ -1,5 +1,22 @@
-import type {BindingIri, BindingLiteral, GenericBindingRow, Iri, ItemFieldPropertyRow, ItemRelationshipRow, ItemRow, ItemTypeFieldRow, PicklistOptionRow, PicklistRow} from './queries.ts';
+import type {
+	Iri,
+	BindingIri,
+	BindingLiteral,
+	GenericBindingRow,
+	ItemFieldPropertyRow,
+	ItemRelationshipRow,
+	ItemRow,
+	ItemTypeFieldRow,
+	PicklistOptionRow,
+	PicklistRow,
+} from './queries.ts';
 import {UserRow} from './queries.ts';
+
+export type {
+	Iri,
+	BindingIri,
+	BindingLiteral,
+};
 
 export interface ConnectionConfig {
 	auth: {
@@ -61,7 +78,7 @@ enum ItemVisitation {
 	BOTH = 0b11,
 }
 
-type PropertiesMap = Record<Iri, Set<BindingIri | BindingLiteral>>;
+type PropertiesMap = Record<Iri, Array<BindingIri | BindingLiteral>>;
 
 export const __dirname = new URL('.', import.meta.url).pathname.replace(/\/$/, '');
 
@@ -83,6 +100,21 @@ function transform_query_primitive(si_var: string, z_primitive: string | RegExp)
 	}
 
 	throw new TypeError(`Invalid query primitive: ${typeof z_primitive} (${z_primitive})`);
+}
+
+function c3(g_binding: BindingIri | BindingLiteral): string {
+	if('uri' === g_binding.type) {
+		return `>${g_binding.value}`;
+	}
+	else if(g_binding['xml:lang']) {
+		return `@${g_binding['xml:lang']}"${g_binding.value}`;
+	}
+	else if(g_binding.datatype) {
+		return `^>${g_binding.datatype}"${g_binding.value}`;
+	}
+	else {
+		return `"${g_binding.value}`;
+	}
 }
 
 export class JamaMms5Connection {
@@ -880,7 +912,7 @@ export class JamaMms5Connection {
 				p_item_local = p_item;
 
 				// save property to local properties map
-				(h_properties_local[p_property] = h_properties_local[p_property] || new Set()).add(g_row.value);
+				(h_properties_local[p_property] = h_properties_local[p_property] || {})[c3(g_row.value)] = g_row.value;
 			}
 		}
 
@@ -917,7 +949,7 @@ export class JamaMms5Connection {
 				const p_property = g_row.property.value;
 
 				// add value to mapping set
-				(h_properties[p_property] = h_properties[p_property] || new Set()).add(g_row.value);
+				(h_properties[p_property] = h_properties[p_property] || {})[c3(g_row.value)] = g_row.value;
 			}
 		}
 
@@ -1285,7 +1317,7 @@ export class Properties {
 	 * Returns the property set as an array
 	 */
 	get asArray(): Property[] {
-		return Object.entries(this._h_properties).map(([p, as]) => new Property(p as Iri, as, this));
+		return Object.entries(this._h_properties).map(([p, h]) => new Property(p as Iri, Object.values(h), this));
 	}
 
 	/**
@@ -1298,7 +1330,7 @@ export class Properties {
 
 		if(!this._h_properties[p_property]) return null;
 		
-		return new Property(p_property, this._h_properties[p_property], this);
+		return new Property(p_property, Object.values(this._h_properties[p_property]), this);
 	}
 
 	/**
@@ -1320,7 +1352,7 @@ export class Properties {
 }
 
 export class Property extends Resource {
-	constructor(p_property: Iri, protected _as_values: Set<BindingIri | BindingLiteral>, protected _k_props: Properties) {
+	constructor(p_property: Iri, protected _a_values: Array<BindingIri | BindingLiteral>, protected _k_props: Properties) {
 		super(p_property, _k_props.item.connection);
 	}
 
@@ -1335,27 +1367,27 @@ export class Property extends Resource {
 	}
 
 	get isEmpty(): boolean {
-		return 0 === this._as_values.size;
+		return 0 === this._a_values.length;
 	}
 
 	get isSingular(): boolean {
-		return 1 === this._as_values.size;
+		return 1 === this._a_values.length;
 	}
 
 	get isMulti(): boolean {
-		return this._as_values.size > 1;
+		return this._a_values.length > 1;
 	}
 
 	get values(): string[] {
-		return [...this._as_values].map(g => g.value);
+		return this._a_values.map(g => g.value);
 	}
 
 	get value(): string {
-		if(1 !== this._as_values.size) {
+		if(1 !== this._a_values.length) {
 			throw new Error(`Cannot access '.value' of multi-valued property <${this.iri}>`);
 		}
 
-		return [...this._as_values][0].value;
+		return this._a_values[0].value;
 	}
 }
 
