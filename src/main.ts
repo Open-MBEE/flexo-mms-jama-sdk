@@ -61,7 +61,7 @@ enum ItemVisitation {
 	BOTH = 0b11,
 }
 
-type PropertiesMap = Record<Iri, Array<BindingIri | BindingLiteral>>;
+type PropertiesMap = Record<Iri, Set<BindingIri | BindingLiteral>>;
 
 export const __dirname = new URL('.', import.meta.url).pathname.replace(/\/$/, '');
 
@@ -880,7 +880,7 @@ export class JamaMms5Connection {
 				p_item_local = p_item;
 
 				// save property to local properties map
-				(h_properties_local[p_property] = h_properties_local[p_property] || []).push(g_row.value);
+				(h_properties_local[p_property] = h_properties_local[p_property] || new Set()).add(g_row.value);
 			}
 		}
 
@@ -917,7 +917,7 @@ export class JamaMms5Connection {
 				const p_property = g_row.property.value;
 
 				// add value to mapping set
-				(h_properties[p_property] = h_properties[p_property] || []).push(g_row.value);
+				(h_properties[p_property] = h_properties[p_property] || new Set()).add(g_row.value);
 			}
 		}
 
@@ -1285,7 +1285,7 @@ export class Properties {
 	 * Returns the property set as an array
 	 */
 	get asArray(): Property[] {
-		return Object.entries(this._h_properties).map(([p, a]) => new Property(p as Iri, a, this));
+		return Object.entries(this._h_properties).map(([p, as]) => new Property(p as Iri, as, this));
 	}
 
 	/**
@@ -1320,7 +1320,7 @@ export class Properties {
 }
 
 export class Property extends Resource {
-	constructor(p_property: Iri, protected _a_values: Array<BindingIri | BindingLiteral>, protected _k_props: Properties) {
+	constructor(p_property: Iri, protected _as_values: Set<BindingIri | BindingLiteral>, protected _k_props: Properties) {
 		super(p_property, _k_props.item.connection);
 	}
 
@@ -1335,27 +1335,27 @@ export class Property extends Resource {
 	}
 
 	get isEmpty(): boolean {
-		return 0 === this._a_values.length;
+		return 0 === this._as_values.size;
 	}
 
 	get isSingular(): boolean {
-		return 1 === this._a_values.length;
+		return 1 === this._as_values.size;
 	}
 
 	get isMulti(): boolean {
-		return this._a_values.length > 1;
+		return this._as_values.size > 1;
 	}
 
 	get values(): string[] {
-		return this._a_values.map(g => g.value);
+		return [...this._as_values].map(g => g.value);
 	}
 
 	get value(): string {
-		if(1 !== this._a_values.length) {
+		if(1 !== this._as_values.size) {
 			throw new Error(`Cannot access '.value' of multi-valued property <${this.iri}>`);
 		}
 
-		return this._a_values[0].value;
+		return [...this._as_values][0].value;
 	}
 }
 
