@@ -337,7 +337,7 @@ export class JamaMms5Connection {
 					for await(const a_batch of this._exec<RowType>(sq_input, {
 						...gc_pagination,
 						offset: i_offset,
-					}, true)) {
+					}, p_endpoint, true)) {
 						// yield to top caller
 						yield a_batch;
 
