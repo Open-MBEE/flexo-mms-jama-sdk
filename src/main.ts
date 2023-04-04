@@ -84,6 +84,7 @@ export const __dirname = new URL('.', import.meta.url).pathname.replace(/\/$/, '
 
 // prep static prefixes
 const H_PREFIXES = {
+	mms: 'https://mms.openmbee.org/rdf/ontology/',
 	rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
 	xsd: 'http://www.w3.org/2001/XMLSchema#',
 	oge: 'https://openmbee.org/openapi-graph-extractor#',
@@ -247,14 +248,14 @@ export class JamaMms5Connection {
 		return this._sq_prefixes+'\n'+sq_query;
 	}
 
-	protected async *_exec<RowType=GenericBindingRow>(sq_input: string, gc_pagination?: SparqlPagination, b_nested=false): AsyncIterableIterator<RowType[]> {
+	protected async *_exec<RowType=GenericBindingRow>(sq_input: string, gc_pagination?: SparqlPagination|null, p_endpoint=this._p_endpoint, b_nested=false): AsyncIterableIterator<RowType[]> {
 		let sq_exec = sq_input;
 		if(gc_pagination) {
 			sq_exec += ` order by ?${gc_pagination.order} limit ${gc_pagination.limit} offset ${gc_pagination.offset}`;
 		}
 
 		// submit request
-		const d_res = await fetch(this._p_endpoint, {
+		const d_res = await fetch(p_endpoint, {
 			method: 'POST',
 			headers: {
 				'accept': 'application/sparql-results+json',
@@ -300,7 +301,7 @@ export class JamaMms5Connection {
 				this._sx_bearer = g_auth.token;
 
 				// retry
-				yield* await this._exec(sq_input, gc_pagination, b_nested);
+				yield* await this._exec(sq_input, gc_pagination, p_endpoint, b_nested);
 
 				// done
 				return;
@@ -378,7 +379,7 @@ export class JamaMms5Connection {
 
 	
 	/**
-	 * Similar to exhaust but collects the iterator's output to a list
+	 * Creates an lookup table for results obtained by iteration using a callback function to produce index data
 	 * @param di_iter - the async iterator
 	 * @returns the collection
 	 */
@@ -390,6 +391,27 @@ export class JamaMms5Connection {
 		}
 
 		return h_index;
+	}
+
+
+	async fetchMetadata(): Promise<{
+		updated: Date;
+	}> {
+		const [, p_root, si_org, si_repo, si_branch] = /^(.+)\/orgs\/([^/]+)\/repos\/([^/]+)\/branches\/([^/]+)\/query$/.exec(this._p_endpoint)!;
+
+		for await(const a_rows of this._exec<{when:BindingLiteral}>(`
+			${this._sq_prefixes}
+			select ?when {
+				?branch a mms:Branch ;
+					mms:id "${si_branch}"
+			}
+		`, null, `${p_root}/orgs/${si_org}/repos/${si_repo}/query`)) {
+			return {
+				updated: new Date(a_rows[0].when.value),
+			};
+		}
+
+		throw new Error(`Failed to produce bindings`);
 	}
 
 
