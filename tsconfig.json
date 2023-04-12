@@ -4,6 +4,7 @@
 
    "compilerOptions": {
       "module": "es2022",
+      "lib": ["DOM"],
       "allowImportingTsExtensions": true,
       "outDir": "dist",
       "declaration": true
