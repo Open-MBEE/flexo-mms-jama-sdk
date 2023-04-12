@@ -11,4 +11,4 @@ Provides an API to query and iterate all requirements data from a Jama project s
 npm i -S @openmbee/mms5-jama-sdk
 ```
 
-### [API Documentation](https://www.openmbee.org/mms5-jama-sdk/classes/JamaMms5Connection.html)
+### [📄 API Documentation](https://www.openmbee.org/mms5-jama-sdk/classes/JamaMms5Connection.html)
