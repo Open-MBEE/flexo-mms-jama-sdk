@@ -9,6 +9,7 @@ import type {
 	ItemTypeFieldRow,
 	PicklistOptionRow,
 	PicklistRow,
+ProjectRow,
 } from './queries.ts';
 import {UserRow} from './queries.ts';
 
@@ -49,6 +50,14 @@ export interface SparqlPagination {
 	offset: number;
 }
 
+export interface ProjectDetails {
+	name: string;
+	key: string;
+	description: string;
+	managerFullName?: string;
+	managerEmail?: string;
+}
+
 type Arrayable<w_thing> = w_thing | w_thing[];
 
 export type QueryQualifiers<
@@ -86,7 +95,7 @@ enum ItemVisitation {
 	BOTH = 0b11,
 }
 
-type PropertiesMap = Record<Iri, Array<BindingIri | BindingLiteral>>;
+export type PropertiesMap = Record<Iri, Array<BindingIri | BindingLiteral>>;
 
 
 export const __dirname = new URL('.', import.meta.url).pathname.replace(/\/$/, '');
@@ -140,6 +149,7 @@ export class JamaMms5Connection {
 
 	// cache state
 	protected _b_all_items = false;
+	protected _b_all_item_types = false;
 	protected _b_all_relations = false;
 	protected _b_all_picklists = false;
 	protected _b_all_options = false;
@@ -388,20 +398,62 @@ export class JamaMms5Connection {
 
 	
 	/**
-	 * Creates an lookup table for results obtained by iteration using a callback function to produce index data
+	 * Creates a lookup table for results obtained by iteration using a callback function to produce index data
 	 * @param di_iter - the async iterator
 	 * @returns the collection
 	 */
-	async index<w_yield>(di_iter: AsyncIterableIterator<w_yield> | Iterable<w_yield>, f_by: (k: w_yield) => string): Promise<Record<string, w_yield>> {
+	async index<w_yield>(
+		di_iter: AsyncIterableIterator<w_yield> | Iterable<w_yield>,
+		f_by: (k: w_yield) => string | [string, any]
+	): Promise<Record<string, w_yield>> {
 		const h_index: Record<string, w_yield> = Object.create(null);
 
 		for await(const w_each of di_iter) {
-			h_index[f_by(w_each)] = w_each;
+			const z_how = f_by(w_each);
+
+			// callback provided explicit key/value pair
+			if(Array.isArray(z_how)) {
+				h_index[z_how[0]] = z_how[1];
+			}
+			// callback only provided key; use value by default
+			else {
+				h_index[z_how] = w_each;
+			}
 		}
 
 		return h_index;
 	}
 
+
+	/**
+	 * Creates a bidirectional graph for results obtained by iteration using a callback function to produce nodes
+	 * @param di_iter - the async iterator
+	 * @returns the collection
+	 */
+	async indexGraph<w_yield>(
+		di_iter: AsyncIterableIterator<w_yield> | Iterable<w_yield>,
+		f_by: (k: w_yield) => [string, string] | [string, string, any]
+	): Promise<Record<string, {incoming: w_yield[]; outgoing: w_yield[];}>> {
+		const h_graph: Record<string, {incoming: w_yield[]; outgoing: w_yield[];}> = Object.create(null);
+
+		for await(const w_each of di_iter) {
+			const [si_src, si_dst, ...a_rest] = f_by(w_each);
+
+			const w_value = a_rest.length? a_rest[0]: w_each;
+
+			(h_graph[si_src] = h_graph[si_src] || {
+				incoming: [],
+				outgoing: [],
+			}).outgoing.push(w_value);
+
+			(h_graph[si_dst] = h_graph[si_dst] || {
+				incoming: [],
+				outgoing: [],
+			}).incoming.push(w_value);
+		}
+
+		return h_graph;
+	}
 
 	async fetchMetadata(): Promise<{
 		updated: Date;
@@ -427,6 +479,33 @@ export class JamaMms5Connection {
 	}
 
 
+	async project(): Promise<ProjectDetails> {
+		for await(const a_rows of this._exec<ProjectRow>(this._query('project.rq'))) {
+			const g_row = a_rows[0];
+
+			if(!g_row) throw new Error(`Failed to fetch project details`);
+
+			const g_project: ProjectDetails = {
+				name: g_row.projectName.value,
+				key: g_row.projectKey.value,
+				description: g_row.projectDescription.value,
+			};
+
+			if(g_row.manager) {
+				g_project.managerFullName = g_row.managerFirstName!.value+' '+g_row.managerLastName!.value;
+
+				if(g_row.managerEmail) {
+					g_project.managerEmail = g_row.managerEmail.value;
+				}
+			}
+
+			return g_project;
+		}
+
+		throw new Error(`Failed to query for project details`);
+	}
+
+
 	/**
 	 * Start fetching all items with the given pagination limit
 	 * @param n_pagination - number of rows to limit each query
@@ -434,6 +513,15 @@ export class JamaMms5Connection {
 	 */
 	async *allItems(n_pagination=1000): AsyncIterableIterator<Item> {
 		const {_h_items} = this;
+
+		// already cached
+		if(this._b_all_items) {
+			for(const p_item in _h_items) {
+				yield _h_items[p_item as Iri];
+			}
+
+			return;
+		}
 
 		// paginated batch querying
 		for await(const a_rows of this._exec<ItemRow>(this._query('items.rq'), {
@@ -452,7 +540,7 @@ export class JamaMms5Connection {
 			yield* a_yields;
 		}
 
-		// all items have been cached
+		// all items have now been cached
 		this._b_all_items = true;
 	}
 
@@ -531,6 +619,15 @@ export class JamaMms5Connection {
 	async *allItemTypes(n_pagination=1000): AsyncIterableIterator<ItemType> {
 		const {_h_types, _h_type_maps} = this;
 
+		// already cached
+		if(this._b_all_item_types) {
+			for(const p_item_type in _h_types) {
+				yield _h_types[p_item_type as Iri];
+			}
+
+			return;
+		}
+
 		// paginated batch querying
 		for await(const a_rows of this._exec<ItemTypeFieldRow>(this._query('item-type-fields.rq'), {
 			order: 'itemType',
@@ -544,6 +641,9 @@ export class JamaMms5Connection {
 				yield _h_types[p_item_type as Iri] = new ItemType(p_item_type as Iri, _h_type_maps[p_item_type as Iri], this);
 			}
 		}
+
+		// all item types have now been cached
+		this._b_all_item_types = true;
 	}
 
 
@@ -729,6 +829,15 @@ export class JamaMms5Connection {
 	async *allPicklists(n_pagination=1000): AsyncIterableIterator<Picklist> {
 		const {_h_picklists} = this;
 
+		// already cached
+		if(this._b_all_picklists) {
+			for(const p_picklist in _h_picklists) {
+				yield _h_picklists[p_picklist as Iri];
+			}
+
+			return;
+		}
+
 		// paginated batch querying
 		for await(const a_rows of this._exec<PicklistRow>(this._query('picklists.rq'), {
 			order: 'picklist',
@@ -746,7 +855,7 @@ export class JamaMms5Connection {
 			yield* a_yields;
 		}
 
-		// all picklists have been cached
+		// all picklists have now been cached
 		this._b_all_picklists = true;
 	}
 
@@ -785,6 +894,15 @@ export class JamaMms5Connection {
 	 */
 	async *allPicklistOptions(n_pagination=1000): AsyncIterableIterator<PicklistOption> {
 		const {_h_options} = this;
+
+		// already cached
+		if(this._b_all_options) {
+			for(const p_option in _h_options) {
+				yield _h_options[p_option as Iri];
+			}
+
+			return;
+		}
 
 		// paginated batch querying
 		for await(const a_rows of this._exec<PicklistOptionRow>(this._query('picklist-options.rq'), {
@@ -913,7 +1031,7 @@ export class JamaMms5Connection {
 	 * @param n_pagination - number of rows to limit each query
 	 * @yields an {@link Item} one at a time
 	 */
-	async *allProperties(n_pagination=1000): AsyncIterableIterator<Record<Iri, PropertiesMap>> {
+	async *allProperties(n_pagination=1000): AsyncIterableIterator<{iri: Iri; map: PropertiesMap}> {
 		const {_h_property_sets} = this;
 
 		// local item and properties
@@ -935,7 +1053,8 @@ export class JamaMms5Connection {
 				if(p_item !== p_item_local && p_item_local) {
 					// save to cache and yield
 					yield {
-						[p_item_local]: _h_property_sets[p_item_local] = h_properties_local,
+						iri: p_item_local,
+						map: _h_property_sets[p_item_local] = h_properties_local,
 					};
 
 					// reset local properties map
@@ -953,7 +1072,8 @@ export class JamaMms5Connection {
 
 		// cache and yield final
 		yield {
-			[p_item_local]: _h_property_sets[p_item_local] = h_properties_local,
+			iri: p_item_local,
+			map: _h_property_sets[p_item_local] = h_properties_local,
 		};
 	}
 
