@@ -4,7 +4,7 @@ select * {
 	?item a def:Item ;
 		:project $_PROJECT_NODE ;
 		:fields [
-			?property ?value ;
+			?property ?propertyValue ;
 		] ;
 		.
 	

@@ -1065,7 +1065,7 @@ export class JamaMms5Connection {
 				p_item_local = p_item;
 
 				// save property to local properties map
-				(h_properties_local[p_property] = h_properties_local[p_property] || {}).push(g_row.value);
+				(h_properties_local[p_property] = h_properties_local[p_property] || []).push(g_row.propertyValue);
 				// (h_properties_local[p_property] = h_properties_local[p_property] || {})[c3(g_row.value as BindingIri)] = g_row.value;
 			}
 		}
@@ -1104,7 +1104,7 @@ export class JamaMms5Connection {
 				const p_property = g_row.property.value;
 
 				// add value to mapping set
-				(h_properties[p_property] = h_properties[p_property] || {}).push(g_row.value);
+				(h_properties[p_property] = h_properties[p_property] || {}).push(g_row.propertyValue);
 				// (h_properties[p_property] = h_properties[p_property] || {})[c3(g_row.value)] = g_row.value;
 			}
 		}

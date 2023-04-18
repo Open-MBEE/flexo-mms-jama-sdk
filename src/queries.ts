@@ -61,7 +61,7 @@ export interface PicklistOptionRow {
 export interface ItemFieldPropertyRow {
 	item: BindingIri;
 	property: BindingIri;
-	value: BindingIri | BindingLiteral;
+	propertyValue: BindingIri | BindingLiteral;
 }
 
 export interface ItemRelationshipRow {
