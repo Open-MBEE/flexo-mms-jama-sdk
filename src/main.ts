@@ -1538,6 +1538,10 @@ export class Property extends Resource {
 		return this._a_values.map(g => g.value);
 	}
 
+	get bindings(): Array<BindingIri | BindingLiteral> {
+		return this._a_values;
+	}
+
 	get value(): string {
 		if(1 !== this._a_values.length) {
 			throw new Error(`Cannot access '.value' of multi-valued property <${this.iri}>`);
