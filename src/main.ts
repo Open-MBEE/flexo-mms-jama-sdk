@@ -1153,7 +1153,7 @@ export class JamaMms5Connection {
 		if(_h_users[p_user]) return _h_users[p_user];
 
 		// fetch via query
-		for await(const a_rows of this._exec<UserRow>(this._query('items.rq', {
+		for await(const a_rows of this._exec<UserRow>(this._query('users.rq', {
 			query: {
 				user: [`<${p_user}>`],
 			},
