@@ -1214,7 +1214,7 @@ export class Resource {
 	}
 
 	get suffix(): string {
-		return this._p_iri.slice(this._k_connection.root.length-1);
+		return this._p_iri.slice(this._k_connection.root.length);
 	}
 
 	get connection(): JamaMms5Connection {
@@ -1368,7 +1368,7 @@ export class ItemTypeField extends Resource {
 		return !!this._g_row.picklistId;
 	}
 
-	async picklist(): Promise<Picklist> {
+	picklist(): Promise<Picklist> {
 		// assert picklist presence
 		if(!this.hasPicklist) throw new Error(`Must check '.hasPicklist' before calling '.picklist()'`);
 
@@ -1396,11 +1396,11 @@ export class Relation extends Resource {
 		return this._g_row.relationName.value;
 	}
 
-	async src(): Promise<Item> {
+	src(): Promise<Item> {
 		return this._k_connection.fetchItem(this._g_row.src.value);
 	}
 
-	async dst(): Promise<Item> {
+	dst(): Promise<Item> {
 		return this._k_connection.fetchItem(this._g_row.dst.value);
 	}
 }
@@ -1427,7 +1427,7 @@ export class Picklist extends Resource {
 		return this._g_row.picklistDescription.value;
 	}
 
-	async options(): Promise<PicklistOption[]> {
+	options(): Promise<PicklistOption[]> {
 		return this._k_connection.fetchPicklistOptionsFor(this.iri);
 	}
 }
