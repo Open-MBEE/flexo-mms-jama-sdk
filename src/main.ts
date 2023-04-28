@@ -482,7 +482,7 @@ export class JamaMms5Connection {
 	async project(p_project: Iri): Promise<ProjectDetails> {
 		for await(const a_rows of this._exec<ProjectRow>(this._query('project.rq', {
 			query: {
-				project: p_project,
+				project: `<${p_project}>`,
 			},
 		}))) {
 			const g_row = a_rows[0];
