@@ -8,9 +8,7 @@ select * {
 		# :project $_PROJECT_NODE ;
 		:itemType ?itemType ;
 		:documentKey ?itemKey ;
-		:fields [
-			:name ?itemName ;
-		] ;
+		:fields/:name ?itemName ;
 		.
 	
 	?itemType :display ?itemTypeDisplay .

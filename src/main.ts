@@ -458,7 +458,7 @@ export class JamaMms5Connection {
 	async fetchMetadata(): Promise<{
 		updated: Date;
 	}> {
-		const [, p_root, si_org, si_repo, si_branch] = /^(.+)\/orgs\/([^/]+)\/repos\/([^/]+)\/branches\/([^/]+)\/query$/.exec(this._p_endpoint)!;
+		const [, p_base, si_org, si_repo, si_branch] = /^(.+)\/orgs\/([^/]+)\/repos\/([^/]+)\/branches\/([^/]+)\/query$/.exec(this._p_endpoint)!;
 
 		for await(const a_rows of this._exec<{when:BindingLiteral}>(`
 			${this._sq_prefixes}
@@ -469,7 +469,7 @@ export class JamaMms5Connection {
 						mms:submitted ?when ;
 					] .
 			}
-		`, null, `${p_root}/orgs/${si_org}/repos/${si_repo}/query`)) {
+		`, null, `${p_base}/orgs/${si_org}/repos/${si_repo}/query`)) {
 			return {
 				updated: new Date(a_rows[0].when.value),
 			};
@@ -479,8 +479,12 @@ export class JamaMms5Connection {
 	}
 
 
-	async project(): Promise<ProjectDetails> {
-		for await(const a_rows of this._exec<ProjectRow>(this._query('project.rq'))) {
+	async project(p_project: Iri): Promise<ProjectDetails> {
+		for await(const a_rows of this._exec<ProjectRow>(this._query('project.rq', {
+			query: {
+				project: p_project,
+			},
+		}))) {
 			const g_row = a_rows[0];
 
 			if(!g_row) throw new Error(`Failed to fetch project details`);
