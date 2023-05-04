@@ -9,9 +9,9 @@ import type {
 	ItemTypeFieldRow,
 	PicklistOptionRow,
 	PicklistRow,
-ProjectRow,
+	ProjectRow,
+	UserRow,
 } from './queries.ts';
-import {UserRow} from './queries.ts';
 
 // @ts-ignore ts
 export declare global {
@@ -897,7 +897,7 @@ export class JamaMms5Connection {
 	 * @yields a {@link PicklistOption} one at a time
 	 */
 	async *allPicklistOptions(n_pagination=1000): AsyncIterableIterator<PicklistOption> {
-		const {_h_options} = this;
+		const {_h_options, _h_options_for_picklist} = this;
 
 		// already cached
 		if(this._b_all_options) {
@@ -918,7 +918,12 @@ export class JamaMms5Connection {
 
 			// first, cache all picklist options returned in this query
 			for(const g_row of a_rows) {
-				a_yields.push(_h_options[g_row.option.value] = new PicklistOption(g_row, this));
+				const p_option = g_row.option.value;
+				a_yields.push(_h_options[p_option] = new PicklistOption(g_row, this));
+
+				// also cache the options by picklist
+				const p_picklist = g_row.picklist.value;
+				(_h_options_for_picklist[p_picklist] = _h_options_for_picklist[p_picklist] || []).push(p_option);
 			}
 
 			// then, yield each one
@@ -1031,9 +1036,9 @@ export class JamaMms5Connection {
 
 
 	/**
-	 * Start fetching all items with the given pagination limit
+	 * Start fetching all properties with the given pagination limit
 	 * @param n_pagination - number of rows to limit each query
-	 * @yields an {@link Item} one at a time
+	 * @yields a property map entry per item, one at a time
 	 */
 	async *allProperties(n_pagination=1000): AsyncIterableIterator<{iri: Iri; map: PropertiesMap}> {
 		const {_h_property_sets} = this;
@@ -1115,6 +1120,26 @@ export class JamaMms5Connection {
 
 		// cache and return
 		return _h_property_sets[p_item] = h_properties;
+	}
+
+
+	/**
+	 * Query for properties
+	 */
+	async *queryProperties(h_query: QueryQualifiers<ItemFieldPropertyRow>, n_pagination=1000): AsyncIterableIterator<ItemFieldPropertyRow> {
+		// fetch via query
+		for await(const a_rows of this._exec<ItemFieldPropertyRow>(this._query('item-field-properties.rq', {
+			query: h_query,
+		}), {
+			order: 'item',
+			limit: n_pagination,
+			offset: 0,
+		})) {
+			// each row
+			for(const g_row of a_rows) {
+				yield g_row;
+			}
+		}
 	}
 
 
