@@ -771,7 +771,7 @@ export class JamaMms5Connection {
 			xc_cached |= ItemVisitation.OUTGOING;
 
 			// add to results
-			a_relations.push(...Object.values(_h_outgoing[p_src]));
+			a_relations.push(...Object.values(_h_outgoing[p_src] || {}));
 		}
 
 		// incoming is fully cached
@@ -780,7 +780,7 @@ export class JamaMms5Connection {
 			xc_cached |= ItemVisitation.INCOMING;
 
 			// add to results
-			a_relations.push(...Object.values(_h_incoming[p_dst]));
+			a_relations.push(...Object.values(_h_incoming[p_dst] || {}));
 		}
 
 		// full cache hit
