@@ -680,14 +680,17 @@ export class JamaMms5Connection {
 	protected _new_relation(g_row: ItemRelationshipRow): Relation {
 		const {_h_relations, _h_incoming, _h_outgoing} = this;
 
+		// ref relation iri
+		const p_relation = g_row.relation.value;
+
 		// create and cache relation
-		const k_relation = _h_relations[g_row.relation.value] = new Relation(g_row, this);
+		const k_relation = _h_relations[p_relation] = new Relation(g_row, this);
 
 		// create bi-directional associations
-		const p_dst = k_relation.raw.dst.value;
-		const p_src = k_relation.raw.src.value
-		Object.assign(_h_incoming[p_dst] = _h_incoming[p_dst] || {}, {[k_relation.iri]: k_relation});
-		Object.assign(_h_outgoing[p_src] = _h_outgoing[p_src] || {}, {[k_relation.iri]: k_relation});
+		const p_dst = g_row.dst.value;
+		const p_src = g_row.src.value;
+		(_h_incoming[p_dst] = _h_incoming[p_dst] || {})[p_relation] = k_relation;
+		(_h_outgoing[p_src] = _h_outgoing[p_src] || {})[p_relation] = k_relation;
 
 		// return relation
 		return k_relation;
@@ -757,7 +760,7 @@ export class JamaMms5Connection {
 	 * @returns Array of {@link Relation}s
 	 */
 	async queryRelations(p_src: Iri | null, p_dst: Iri | null): Promise<Relation[]> {
-		const {_h_relations, _h_incoming, _h_outgoing, _h_visited} = this;
+		const {_h_relations, _h_incoming, _h_outgoing, _h_visited, _b_all_relations} = this;
 
 		// prep relations results
 		const a_relations: Relation[] = [];
@@ -766,7 +769,7 @@ export class JamaMms5Connection {
 		let xc_cached = ItemVisitation.NONE;
 
 		// outgoing is fully cached
-		if(p_src && (this._b_all_relations || _h_visited[p_src] & ItemVisitation.OUTGOING)) {
+		if(p_src && (_b_all_relations || _h_visited[p_src] & ItemVisitation.OUTGOING)) {
 			// mark cache hit
 			xc_cached |= ItemVisitation.OUTGOING;
 
@@ -775,7 +778,7 @@ export class JamaMms5Connection {
 		}
 
 		// incoming is fully cached
-		if(p_dst && (this._b_all_relations || _h_visited[p_dst] & ItemVisitation.INCOMING)) {
+		if(p_dst && (_b_all_relations || _h_visited[p_dst] & ItemVisitation.INCOMING)) {
 			// mark cache hit
 			xc_cached |= ItemVisitation.INCOMING;
 
@@ -784,8 +787,11 @@ export class JamaMms5Connection {
 		}
 
 		// full cache hit
-		if(xc_cached === ItemVisitation.BOTH) {
+		if(xc_cached === ItemVisitation.BOTH || (_b_all_relations && (p_src || p_dst))) {
 			return a_relations;
+		}
+		else if(_b_all_relations && !p_src && !p_dst) {
+			return Object.values(_h_relations);
 		}
 
 
