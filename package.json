@@ -1,6 +1,6 @@
 {
   "name": "@openmbee/mms5-jama-sdk",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "",
   "main": "dist/main.node16.cjs",
   "module": "dist/main.mjs",
