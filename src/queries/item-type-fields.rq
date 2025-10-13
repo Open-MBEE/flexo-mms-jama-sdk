@@ -2,7 +2,7 @@
 
 select * {
 	?itemType a def:ItemType ;
-		:fields/rdf:rest*/rdf:first ?field ;
+		:fields ?field ;
 		.
 	
 	?field :name ?fieldName ;
